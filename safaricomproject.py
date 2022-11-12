@@ -13,19 +13,21 @@ import pip
 
 import numpy as np
 import pandas as pd
+import pickle
 from pip._internal.operations.install.legacy import install
 
 # Read csv file into a pandas dataframe
 # from google.colab import files
 # uploaded = files.upload()
 import emoji
+import pickle
 import nltk
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
 import string
 import matplotlib.pyplot as plt
 import re
-from wordcloud import WordCloud
+#from wordcloud import WordCloud
 from collections import Counter
 from sklearn.cluster import KMeans
 from sklearn.decomposition import LatentDirichletAllocation
@@ -114,14 +116,14 @@ tweets_df.head()
 
 """#Data Visualization(Word Cloud)"""
 
-all_words = ' '.join([text for text in df['Tweet']])
+#all_words = ' '.join([text for text in df['Tweet']])
 
-wordcloud = WordCloud(width=800, height=500, random_state=21, max_font_size=110).generate(all_words)
+#wordcloud = WordCloud(width=800, height=500, random_state=21, max_font_size=110).generate(all_words)
 
-plt.figure(figsize=(10, 7))
-plt.imshow(wordcloud, interpolation="bilinear")
-plt.axis('off')
-plt.show()
+#plt.figure(figsize=(10, 7))
+#plt.imshow(wordcloud, interpolation="bilinear")
+#plt.axis('off')
+#plt.show()
 
 """#Get the most frequent words"""
 
@@ -170,8 +172,8 @@ tweets_df.head()
 
 tweets_df.tail()
 
-wordlist = nltk.FreqDist(all_words)
-word_features = wordlist.keys()
+#wordlist = nltk.FreqDist(all_words)
+#word_features = wordlist.keys()
 
 """#Vectorization"""
 
@@ -185,7 +187,7 @@ tfIdf = TfidfVectorizer(max_features=20000)
 X = tweets_df["tweet_punct"]
 
 vec = TfidfVectorizer(min_df=5, max_df=0.95, sublinear_tf=True, use_idf=True, ngram_range=(1, 2))
-len(all_words)
+#len(all_words)
 
 """#Define Labels(Positive, Negative, Neutral)"""
 
@@ -295,6 +297,13 @@ pred = svm.predict(X_val)
 print("Accuracy: ", accuracy_score(y_val, pred))
 print(classification_report(y_val, pred))
 print(confusion_matrix(y_val, pred))
+#print(pred.predict([[0, 1, 2]]))
+
+#saving the SVM model into a pickle file
+with open('model.pkl', 'wb') as fid:
+    pickle.dump(svm, fid)
+
+pickle.dump(tfidf_vectorizer, open('transform.pkl', 'wb'))
 
 """#Classification using Logistic Regression"""
 
@@ -346,3 +355,57 @@ pred = MNB.predict(X_val)
 print("Accuracy: ", accuracy_score(y_val, pred))
 print(classification_report(y_val, pred))
 print(confusion_matrix(y_val, pred))
+
+#import numpy as np
+from flask import Flask, request, jsonify, render_template
+
+app = Flask(__name__)
+
+svmClassifier = pickle.load(open('model.pkl', 'rb'))
+cv = pickle.load(open('transform.pkl','rb'))
+
+@app.route('/')
+def home():
+    return render_template('index.html')
+
+def ValuePredictor(to_predict_list):
+    pickle.dump(svm, open('model.pkl', 'rb'))
+    to_predict = np.array(to_predict_list).reshape(1, 1)
+    with (open("model.pkl", "rb")) as openfile:
+        while True:
+            try:
+                loaded_model = pickle.load(open("model.pkl", "rb"))
+            except EOFError:
+                break
+    result = loaded_model.predict(to_predict)
+    return result[0]
+@app.route('/predict',methods=['GET', 'POST'])
+def predict():
+    # prediction function
+
+    #For rendering results on HTML GUI
+
+    if request.method == "POST":
+        tweet = request.form['tweet']
+        vect = cv.transform([tweet])
+        my_prediction = svmClassifier.predict(vect)
+        if my_prediction == 0:
+            return render_template("index.html", prediction_text='The tweet is {}'.format(my_prediction)+',which is Negative :(')
+        if my_prediction == 1:
+            return render_template("index.html", prediction_text='The tweet is {}'.format(my_prediction)+',which is Neutral :/')
+        if my_prediction == 2:
+            return render_template("index.html", prediction_text='The tweet is {}'.format(my_prediction)+',which is Positive :)')
+
+@app.route('/predict_api',methods=['POST'])
+def predict_api():
+    '''
+    For direct API calls through request
+    '''
+    data = request.get_json(force=True)
+    prediction = svm.predict([np.array(list(data.values()))])
+
+    output = prediction[0]
+    return jsonify(output)
+
+if __name__ == "__main__":
+    app.run(debug=True)
